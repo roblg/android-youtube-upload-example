@@ -1,0 +1,1 @@
+This is an example of using Google's JSON-C API to upload a video to YouTube.
