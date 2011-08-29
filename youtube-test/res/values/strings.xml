@@ -2,4 +2,5 @@
 <resources>
     <string name="hello">Hello World, YouTubeTestActivity!</string>
     <string name="app_name">Youtube-test</string>
+    <string name="devId"><!-- TODO INSERT YOUR DEV ID HERE --></string>
 </resources>

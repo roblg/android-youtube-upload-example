@@ -45,7 +45,7 @@ public class YouTubeClientTester {
 		
 		Response resp = login.authenticate();
 		System.out.println(resp.getAuthorizationHeaderValue());
-		
+		/*
 		YouTubeClient client = new YouTubeClient(transport, devId, resp.getAuthorizationHeaderValue());
 		UploadRequestData data = new UploadRequestData();
 		data.title = "Foo";
@@ -54,6 +54,7 @@ public class YouTubeClientTester {
 		data.fileName = URLEncoder.encode("testvideo.m4v", "UTF-8");
 		data.fileData = new FileInputStream(new File("/Users/robert/Desktop/testvideo.m4v"));
 		System.out.println(client.executeUpload(data));
+		*/
 	}
 	
 }

@@ -9,4 +9,15 @@
     android:layout_height="wrap_content" 
     android:text="@string/hello"
     />
+    
+<Button android:id="@+id/do_auth_btn" 
+	android:layout_width="fill_parent" 
+	android:layout_height="wrap_content"
+	android:text="Authorize!" />
+	
+<Button android:id="@+id/do_upload_btn"
+	android:layout_width="fill_parent"
+	android:layout_height="wrap_content"
+	android:text="Upload!" 
+	android:visibility="gone"/>
 </LinearLayout>

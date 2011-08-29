@@ -1,19 +1,17 @@
 package com.roblg.android.youtube.client;
 
-
-
 import java.io.IOException;
 
-import com.google.api.client.auth.oauth.OAuthCredentialsResponse;
-import com.google.api.client.auth.oauth.OAuthGetTemporaryToken;
+import com.google.api.client.auth.oauth2.draft10.AccessTokenResponse;
 import com.google.api.client.googleapis.GoogleHeaders;
+import com.google.api.client.googleapis.auth.oauth2.draft10.GoogleAccessProtectedResource;
+import com.google.api.client.googleapis.auth.oauth2.draft10.GoogleAccessTokenRequest.GoogleAuthorizationCodeGrant;
 import com.google.api.client.googleapis.json.JsonCContent;
 import com.google.api.client.googleapis.json.JsonCParser;
 import com.google.api.client.http.GenericUrl;
 import com.google.api.client.http.HttpContent;
 import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestFactory;
-import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpResponse;
 import com.google.api.client.http.HttpResponseException;
 import com.google.api.client.http.HttpTransport;
@@ -28,51 +26,45 @@ public class YouTubeClient {
 	private final JsonFactory jsonFactory = new JacksonFactory();
 	
 	private final HttpTransport transport;
-	
+
 	private HttpRequestFactory requestFactory;
-	private String authHeaderValue;
 	
 	/**
 	 * @param transport the transport that's going to send data
 	 * @param devId the developer id
 	 * @param authHeaderValue the Authorization header value
 	 */
-	public YouTubeClient(HttpTransport transport, final String devId, String authHeaderValue) {
-		this.transport = transport;
-		this.authHeaderValue = authHeaderValue;
+	private YouTubeClient(YouTubeProtectedResource requestInitializer) {
+		this.transport = requestInitializer.getTransport();
 		final JsonCParser parser = new JsonCParser();
 		parser.jsonFactory = jsonFactory;
-		requestFactory = this.transport.createRequestFactory(new HttpRequestInitializer() {
-			@Override
-			public void initialize(HttpRequest request) throws IOException {
-				// headers
-		        GoogleHeaders headers = new GoogleHeaders();
-		        headers.setApplicationName("roblg.com-youtubetest/1.0");
-		        headers.authorization = YouTubeClient.this.authHeaderValue;
-		        headers.setDeveloperId(devId);
-		        headers.gdataVersion = "2";
-		        request.headers = headers;
-		        request.addParser(parser);
-			}
-		});
+		requestFactory = this.transport.createRequestFactory(requestInitializer);
+	}
+	
+	public static YouTubeClient buildAuthorizedClient(HttpTransport transport, JsonFactory jsonFactory, OAuthConfig oauthConfig, String devId) throws IOException {
+		// TODO: maybe full this first part out
+		GoogleAuthorizationCodeGrant authRequest = new GoogleAuthorizationCodeGrant(transport,
+				jsonFactory, oauthConfig.getOauthClientId(), oauthConfig.getOauthClientSecret(),
+				oauthConfig.getOauthAuthorizationCode(), oauthConfig.getOauthRedirectUri());
+		authRequest.useBasicAuthorization = false;
+		AccessTokenResponse authResponse  = authRequest.execute();
+		oauthConfig.setOauthAccessToken(authResponse.accessToken);
+		oauthConfig.setOauthRefreshToken(authResponse.refreshToken);
+		
+		YouTubeProtectedResource initializer = new YouTubeProtectedResource(
+				oauthConfig.getOauthAccessToken(), 
+				transport, 
+				jsonFactory, 
+				oauthConfig.getOauthClientId(), 
+				oauthConfig.getOauthClientSecret(), 
+				oauthConfig.getOauthRefreshToken(), 
+				devId);
+		
+		return new YouTubeClient(initializer);
 	}
 	
 	public boolean authorize() throws IOException {
-//		AuthorizationRequestUrl builder = new AuthorizationRequestUrl("https://www.google.com/accounts/OAuthGetRequestToken");
-//		builder.redirectUri = "http://roblg.com/testOAuth";
-//		builder.scope = "http://gdata.youtube.com";
-//		
-//		String response = requestFactory.buildGetRequest(builder).execute().parseAsString();
-		
-		// HttpRequest request = requestFactory.buildPostRequest(builder, null);
-		// String response = request.execute().parseAsString();
-		// AuthorizationResponse authResponse = new AuthorizationResponse(redirectUrl);
-		
-		OAuthGetTemporaryToken getTempToken = new OAuthGetTemporaryToken("https://www.google.com/accounts/OAuthGetRequestToken");
-		OAuthCredentialsResponse resp = getTempToken.execute();
-		
-		// resp.token; 
-		return true;
+		return false;
 	}
 	
 	public String executeUpload(UploadRequestData data) throws IOException {
@@ -80,9 +72,12 @@ public class YouTubeClient {
 		YouTubeUrl url = YouTubeUrl.forUploadRequest();
 		HttpRequest request = requestFactory.buildPostRequest(url, getUploadContent(data));
 		
+		// blech... because YouTubeProtectedResource extends GoogleAccessProtectedResource and that class
+		// make initialize final... we have to set up the stupid headers here 
+		request.headers = new GoogleHeaders();
+		
 		// here, HttpRequest already has headers that have the app name and the developer id, but
 		// I think we need to add a slug too...
-		
 		GoogleHeaders.class.cast(request.headers).slug = data.fileName;
 		System.out.println(request.content);
 		System.out.println(request.headers);
@@ -105,6 +100,7 @@ public class YouTubeClient {
 			content.inputStream = data.fileData;
 			content.type = "video/x-m4v";
 			HttpRequest actualRequest = requestFactory.buildPutRequest(new GenericUrl(uploadUrl), content);
+			actualRequest.headers = new GoogleHeaders();
 			try {
 				actualRequest.execute().parseAsString();
 			} catch (HttpResponseException e) {
@@ -124,5 +120,34 @@ public class YouTubeClient {
 		content.data = data;
 		return content;
 	}
+	
+	private static class YouTubeProtectedResource extends GoogleAccessProtectedResource {
+		
+		private final String devId;
+
+		public YouTubeProtectedResource(String accessToken,
+				HttpTransport transport, JsonFactory jsonFactory,
+				String clientId, String clientSecret, String refreshToken, String devId) {
+			super(accessToken, transport, jsonFactory, clientId, clientSecret, refreshToken);
+			this.devId = devId;
+		}
+		
+		// AccessProtectedResource makes initialize() final, so we're taking advantage
+		// of the fact that it also functions as a request interceptor...
+		@Override
+		public void intercept(HttpRequest request) throws IOException {
+			// we need GoogleHeaders here, but initialize() is final... so whoever is making the 
+			// request has to modify it before executing... grody. 
+			GoogleHeaders headers = (GoogleHeaders)request.headers;
+			headers.setApplicationName("roblg.com-youtubetest/1.0");
+			headers.gdataVersion = "2";
+			headers.setDeveloperId(devId);
+			request.headers = headers;
+			// let the superclass do its business
+			super.intercept(request);
+		}
+		
+	}
+	
 	
 }
